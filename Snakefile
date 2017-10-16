@@ -1,3 +1,9 @@
+# TODO:
+# adapter clipping - fastq-mcf
+# read group assignment - from metadata?
+# CleanSam - needed after bwa mem?
+
+
 # Reference data fetched via "wget -r ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/"
 # Then unzip ucsc.hg19 and build its index with bwa index.
 genome = "reference/ucsc.hg19.fasta"
@@ -31,6 +37,8 @@ rule bwa_map:
     params:
         rg = "@RG\\tID:{sample}\\tSM:{sample}\\tPL:ILLUMINA\\tPU:1\\tLB:lib1"
     shell:
+        # rg should be in a config file (one per SRA/fastq, probably)
+        # adapter trimming probably should be, as well.
         "bwa mem -M -t 16 -R '{params.rg}' {genome} {input} | samtools view -Sbh - > {output}"
 
 rule samtools_index:
@@ -53,11 +61,12 @@ rule mark_duplicates:
     input:
         "mapped_reads/{sample}.sorted.bam"
     output:
-        "mapped_reads/{sample}.sorted.dedup.bam"
+        bam="mapped_reads/{sample}.sorted.dedup.bam"
+        metrics="metrics/markduplicates_{sample}.txt"
     shell:
         ("{PICARD} MarkDuplicates"
          " CREATE_INDEX=true TMP_DIR=/tmp"
-         " INPUT={input} OUTPUT={output} METRICS_FILE=metrics/markduplicates_{wildcards.sample}.txt")
+         " INPUT={input} OUTPUT={output.bam} METRICS_FILE={output.metrics}")
 
 rule BQSR:
     input:
