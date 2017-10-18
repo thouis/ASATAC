@@ -1,8 +1,6 @@
 # TODO:
-# adapter clipping - fastq-mcf
 # read group assignment - from metadata?
 # CleanSam - needed after bwa mem?
-
 
 # Reference data fetched via "wget -r ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/"
 # Then unzip ucsc.hg19 and build its index with bwa index.
@@ -18,7 +16,8 @@ GATK = "java -jar ~/bin/GenomeAnalysisTK.jar"
 
 rule all:
     input:
-        "allele_counts/SRR2378583_subset.counts.csv"
+        "allele_counts/SRR2378583.counts.csv"
+
 
 rule subset_fastq:
     input:
@@ -28,17 +27,28 @@ rule subset_fastq:
     shell:
         "zcat {input} | sed -n 1,4000000p | gzip -c > {output}"
 
+rule clip:
+    input:
+        "fastq/{sample}_1.fastq.gz", "fastq/{sample}_2.fastq.gz"
+    output:
+        "fastq/{sample}_1.clipped.fastq.gz",
+        "fastq/{sample}_2.clipped.fastq.gz",
+        "metrics/{sample}.fastq-mcf.out"
+    shell:
+        "fastq-mcf -l 15 -k 0 -o {output[0]} -o {output[1]} illumina_adaptors.fa {input} > {output[2]}"
+
+ruleorder: clip > subset_fastq
+
 rule bwa_map:
     input:
-        "fastq/{sample}_1.fastq.gz",
-        "fastq/{sample}_2.fastq.gz"
+        "fastq/{sample}_1.clipped.fastq.gz",
+        "fastq/{sample}_2.clipped.fastq.gz"
     output:
         "mapped_reads/{sample}.bam"
     params:
         rg = "@RG\\tID:{sample}\\tSM:{sample}\\tPL:ILLUMINA\\tPU:1\\tLB:lib1"
     shell:
-        # rg should be in a config file (one per SRA/fastq, probably)
-        # adapter trimming probably should be, as well.
+        # Read Group should be in a config file (one per SRA/fastq, probably)
         "bwa mem -M -t 16 -R '{params.rg}' {genome} {input} | samtools view -Sbh - > {output}"
 
 rule samtools_index:
@@ -61,7 +71,7 @@ rule mark_duplicates:
     input:
         "mapped_reads/{sample}.sorted.bam"
     output:
-        bam="mapped_reads/{sample}.sorted.dedup.bam"
+        bam="mapped_reads/{sample}.sorted.dedup.bam",
         metrics="metrics/markduplicates_{sample}.txt"
     shell:
         ("{PICARD} MarkDuplicates"
@@ -100,3 +110,4 @@ rule counts:
 # https://gatkforums.broadinstitute.org/gatk/discussion/9622/allele-specific-annotation-and-filtering
 # http://www.cureffi.org/2013/08/26/allele-specific-rna-seq-pipeline-using-gsnap-and-gatk/
 # http://barcwiki.wi.mit.edu/wiki/SOPs/variant_calling_GATK
+# https://github.com/secastel/allelecounter
